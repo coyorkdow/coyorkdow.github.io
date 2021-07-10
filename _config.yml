@@ -20,7 +20,7 @@
 
 title: youtao love murphy
 author:
-  name: coyorkdow
+  name: Youtao Guo 
   email: coyorkdow@outlook.com
 description: >- # this means to ignore newlines until "baseurl:"
   Write an awesome description for your new site here. You can edit this
@@ -33,12 +33,15 @@ url: https://coyorkdow.github.io # the base hostname & protocol for your site, e
 minima:
   social_links:
     github: coyorkdow
+    linkedin: youtaoguo
 
 # Build settings
 theme: minima
+remote_theme: jekyll/minima
 plugins:
   - jekyll-feed
   - jekyll-seo-tag
+  - jekyll-remote-theme
 # Exclude from processing.
 # The following items will not be processed, by default.
 # Any item listed under the `exclude:` key here will be automatically added to
