@@ -1,0 +1,170 @@
+---
+layout: post
+title: "C++移动语义: 右值引用, 引用折叠, std::move, std::forward"
+date: 2021-07-11 +0800
+categories: C++ 
+---
+C++11新增了移动语义，提供移动而非拷贝对象的能力。在很多场景中，发生对象拷贝后原对象就立刻被销毁（比如将对象放入容器），这种情况下，实例化时不进行拷贝而是接管旧对象所占有的资源能大幅度提高性能。为了支持移动语义，C++11新增了一种引用类型: 右值引用(rvalue reference)，它被用于绑定到一个将要销毁的对象上。和拷贝构造函数/拷贝赋值运算类似，现在可以定义移动构造函数/移动赋值运算，实现移动而非拷贝的逻辑。
+
+```c++
+struct Moveable {
+  Moveable() = default;
+  ~Moveable() = default;
+  Moveable(const Moveable& m) { std::cout << "copy\n"; }
+  Moveable(Moveable&& m) { std::cout << "move\n"; }
+  Moveable& operator=(const Moveable& m) {
+    std::cout << "copy\n";
+    return *this;
+  }
+  Moveable& operator=(Moveable&& m) {
+    std::cout << "move\n";
+    return *this;
+  }
+};
+```
+右值引用使用`&&`而不是常规引用（可称为左值引用）的`&`。右值引用仅能绑定右值而无法绑定到左值上。考虑如下例子：
+
+```c++
+void foo(int&& v) {}
+```
+形如`foo(1)`和`foo(i+1)`这样的调用是合法的，但是`foo(i)`则不被允许，因为它试图将右值引用绑定到左值`i`上。这样的规则为移动语义带来了困扰，因为一个即将被销毁的对象仍然会被视为左值，尽管我们希望将它视为右值处理。幸运的是，借助模板可以实现下面这个简单的魔法：
+
+```c++
+template <typename T> void func(T&& v);
+int i = 0;
+func(0); //合法的调用
+func(i); //合法的调用
+```
+为了理解上述代码的原理，需要考察模板推断的过程。当我们将一个左值传递给函数的右值引用参数，且此右值引用指向模板类型参数（如`T&&`）时，编译器推断模板类型参数为实参的的左值引用类型。因此在调用`func(i)`时，`T`的类型是`int&`而非`int`。这引入了第二个困境：看起来`func(i)`的参数是一个对int的左值引用的右值引用。在一般情况下引用的引用是不被允许的，但是通过类型别名或者模板推断却能达到。
+如果一个引用的引用被创建，c++11使用引用折叠(reference collapsing)规则将它变为一个普通的左值或者右值引用。折叠引用的规则共有四条，在下标列出，`TR`表示对`T`的引用类型，同时`T`也是一个对`A`的引用类型：
+
+| TR  | T   | 结果 |
+| --- | --- | ---- |
+| T&  | A&  | A&   |
+| T&& | A&  | A&   |
+| T&  | A&& | A&   |
+| T&& | A&& | A&&  |
+
+可以看到，除了对右值引用的右值引用会折叠为右值引用外，其它三种情况的结果都是左值引用。因此在调用`func(i)`时函数的参数实际上是左值引用。这样的魔法使得指向模板类型参数的右值引用在一些情况下实际上是左值引用，因此这又被称为万能引用(universal reference)。
+
+从一个左值`staitc_cast`到右值是被允许的，可以通过以下的函数辅助移动语义的实现：
+
+```c++
+template <typename T>
+T&& move(const T& v) {
+  return static_cast<T&&>(const_cast<T&>(v));
+}
+```
+函数的参数是一个常量左值引用，这允许在调用时接受右值。`const_cast`解除`v`的`const`限制，然后通过`static_cast`转换为右值。在大部分情况下这个函数具备和标准库的`std::move`相同的能力，但是二者之间仍然有差异，我们自己实现的`move`函数会丢失`const`属性。下面用一个例子来展示两者间的区别。我们定义函数`Call`，它的重载版本分别接受左值，右值，和常量右值。
+
+```c++
+void Call(Moveable&& m) {
+  std::cout << "move\n";
+};
+void Call(const Moveable&& m) {
+  std::cout << "const move\n";
+};
+void Call(Moveable& m) {
+  std::cout << "copy\n";
+}
+
+const Moveable m;
+Call(move(m));      //输出move
+Call(std::move(m)); //输出const move
+```
+现在我们来看标准库`std::move`的实现：
+
+```c++
+template <typename _Tp>
+typename std::remove_reference<_Tp>::type&& move(_Tp&& __t) noexcept {
+  return static_cast<typename std::remove_reference<_Tp>::type&&>(__t);
+}
+```
+`std::move`接受右值引用参数，且该参数指向模板类型参数，因此会触发万能引用，在调用时可以接受左值（包括常量左值）。`std::remove_reference`可以推断出被引用的类型，去除`_Tp`可能的引用属性，从而避免引用折叠。`typename std::remove_reference<_Tp>::type&&`的类型是被引用的类型的右值，它能保留实参的`const`属性。
+
+`std::remove_reference<_Tp>::type`的实现很简单，如下所示：
+
+```c++
+template <typename _Tp>
+struct remove_reference {
+  typedef _Tp type;
+};
+
+template <typename _Tp>
+struct remove_reference<_Tp&> {
+  typedef _Tp type;
+};
+
+template <typename _Tp>
+struct remove_reference<_Tp&&> {
+  typedef _Tp type;
+};
+```
+
+### 转发
+
+一个和直觉违背但是符合逻辑的事实是：一个右值引用本身是一个左值。我们通过和之前类似的`Call`函数体现这点：
+
+```c++
+void Call(int&& m) { std::cout << "move\n"; };
+void Call(int& m) { std::cout << "copy\n"; }
+
+int&& r = 0;
+Call(r);            //输出copy
+Call(std::move(r)); //输出move
+```
+这会造成一些问题：一个右值的调用栈可能有多层，在每一层调用中我们都希望保持它不丢失右值的性质。在每次调用时都用`std::move`包装能保证这一点，但是`std::move`会将一个非右值转化成右值。当存在万能引用时（如果我们使用了模板，几乎不可能避免这样的情况发生），我们并不能确定函数的形参究竟是左值还是右值。这时候需要一种方式使得传递参数时保持原始实参的类型，于是`std::forward`就派上了用场。
+
+```c++
+template <typename T>
+void Call(T&& m) {
+  std::cout << "move\n";
+};
+template <typename T>
+void Call(T& m) {
+  std::cout << "copy\n";
+}
+template <typename T>
+void CallWrap(T&& v) {
+  return Call(std::forward<T>(v));
+}
+
+int i = 0;
+CallWrap(0); //输出move
+CallWrap(i); //输出copy
+```
+现在我们来看标准库`std::forward`的实现：
+
+```c++
+/**
+ *  @brief  Forward an lvalue.
+ *  @return The parameter cast to the specified type.
+ *
+ *  This function is used to implement "perfect forwarding".
+ */
+template <typename _Tp>
+_Tp&& forward(
+    typename std::remove_reference<_Tp>::type& __t) noexcept {
+  return static_cast<_Tp&&>(__t);
+}
+
+/**
+ *  @brief  Forward an rvalue.
+ *  @return The parameter cast to the specified type.
+ *
+ *  This function is used to implement "perfect forwarding".
+ */
+template <typename _Tp>
+_Tp&& forward(
+    typename std::remove_reference<_Tp>::type&& __t) noexcept {
+  static_assert(!std::is_lvalue_reference<_Tp>::value,
+                "template argument"
+                " substituting _Tp is an lvalue reference type");
+  return static_cast<_Tp&&>(__t);
+}
+```
+根据注释可以看到，重载的第一个版本用于转发左值，第二个版本用于转发右值。因为函数参数是`typename std::remove_reference<_Tp>::type&&`，所以在这里编译器无法推断`_Tp`的类型，需要显式声明。可以发现这两个重载的版本除了参数不同外其它一模一样（先忽略`static_assert`），仅仅是通过模板推断来得到其引用类型。我们结合`CallWrap`分别对两个重载版本进行分析。
+
+当调用`CallWrap(i)`时，模板类型参数`T`是`int&`；根据引用折叠，参数`v`的类型是`int&`，匹配到转发左值的重载版本。返回值是`static_cast<_Tp&&>(__t)`，其中`_Tp`是`int&`，根据引用折叠，返回左值引用。
+
+当调用`CallWrap(0)`时，参数`v`的类型是`int&&`，而模板类型参数`T`是`int`，匹配到转发右值的重载版本。返回值是`static_cast<_Tp&&>(__t)`，其中`_Tp`是`int`，返回右值引用。因为`_Tp`不是一个左值引用，所以能通过`static_assert`。那么什么情况下`static_assert`会失败呢？举个例子: `std::forward<int&>(5);`。
