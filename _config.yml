@@ -35,7 +35,7 @@ minima:
 
 # Build settings
 theme: minima
-remote_theme: jekyll/minima
+remote_theme: coyorkdow/minima
 plugins:
   - jekyll-feed
   - jekyll-seo-tag
