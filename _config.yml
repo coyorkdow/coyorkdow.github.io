@@ -18,7 +18,7 @@
 # You can create any custom variable you would like, and they will be accessible
 # in the templates via {{ site.myvariable }}.
 
-title: youtao loved murphy
+title: youtao's blog
 author:
   name: Youtao Guo
   email: coyorkdow@outlook.com
