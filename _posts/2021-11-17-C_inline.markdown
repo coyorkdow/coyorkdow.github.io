@@ -1,0 +1,157 @@
+---
+layout: post
+title: "C++/C中的inline：内联和链接行为"
+date: 2021-11-17 +0800
+categories: C
+---
+*阅读本文需要对定义和声明的区别，编译和链接的区别有一定了解。在文末有全文内容的总结。*
+
+不久前我在一个关于“怎么才算是熟练掌握C语言”的问题下做了如下回答。
+
+![](https://raw.githubusercontent.com/coyorkdow/coyorkdow.github.io/main/imgs/2021-11-17.png)
+
+`inline`并不是一个陌生的C/C++关键词，相信大多数人也知道它的作用是建议（而非要求）编译器将一个函数内联。但是大概较少的人知道这只是该关键词的作用之一。鉴于`inline`只提供内联建议而实际行为仍然由编译器决定，第二个作用显得更加关键：影响链接行为。
+
+`inline`对链接行为的影响是非常复杂的，而且对C++和C有不同的表现。相对来说C++中`inline`的规则更加容易理解（同时我们使用C++也比C语言更频繁），因此先对C++的`inline`做简单介绍。
+
+> ### 一处定义原则(ODR, one-definition-rule)
+> * 和全局变量与静态数据成员一样，在整个程序中，非内联函数和成员函数只能被定义一次。
+> * 类类型(class type，包括struct与union)和内联函数在每个翻译单元中最多只能被定义一次，如果存在多个翻译单元，则其所有的定义都必须是相同的。
+> 
+> 一个翻译单元(translation unit)是指：预处理一个源文件所获得的结果；就是说，它包括`#include`指示符号(即所包含的头文件)所包含的内容。
+
+以上引用自**C++ Templates 第一版**，其实为ODR的简单表示，根据该表述可以得知，C++中内联函数在可以在每一个翻译单元中都定义一次。因此和通常的“头文件中只有声明没有定义”不同，`inline`修饰的函数可以将定义放置于头文件而在链接时不会产生符号冲突。
+值得一提的，`inline`不会改变函数的链接性，也就是说内联函数仍然是外部链接性的。如果一个内联函数在不同的翻译单元中存在多个定义，那么在进行符号解析时也会遇到多个相同的全局符号定义。链接器会只保留一个符号定义，而其余的则被丢弃。ODR指出不同的翻译单元中的定义应该是相同的，但是实际上编译器没有对此做出任何检查或保障。可以看以下代码：
+
+```c++
+// a.cc
+#include <stdio.h>
+
+int call();
+
+inline int func(int x) { return x; }
+
+int main(void) {
+  printf("%d %d", func(1), call());
+  return 0;
+}
+
+// b.cc
+inline int func(int x) { return x + x; }
+
+int call() { return func(1); }
+```
+
+执行编译命令`g++ -o test a.cc b.cc`和`g++ -o test b.cc a.cc`，得到的可执行文件可能会有不同的输出。
+
+### C语言的行为
+
+但是如果我们把以上代码迁移至C语言(只需要把文件后缀名改为`.c`即可)，会得到类似这样的错误：
+```
+Undefined symbols for architecture x86_64:
+  "_func", referenced from:
+      _call in b-313925.o
+      _main in a-1c623a.o
+ld: symbol(s) not found for architecture x86_64
+```
+
+很简洁明了的错误信息：提示我们找不到内联函数`func`的符号定义。为了一探究竟，我们使用objdump来看一下符号表的内容。首先为两个翻译单元生成obj文件，执行`gcc -c a.c b.c`，然后分别执行`objdump -t a.o`和`objdump -t b.o`，得到符号表信息如下：
+```
+b.o:    file format mach-o 64-bit x86-64
+
+SYMBOL TABLE:
+0000000000000000 g     F __TEXT,__text _call
+0000000000000000         *UND* _func
+
+a.o:    file format mach-o 64-bit x86-64
+
+SYMBOL TABLE:
+0000000000000000 g     F __TEXT,__text _main
+0000000000000000         *UND* _call
+0000000000000000         *UND* _func
+0000000000000000         *UND* _printf
+```
+
+可以看到无论`a.o`还是`b.o`中`func`的符号都被标记为**UND**，即没有在该模块中被定义，因此在链接的时候自然会出错。我们还可以用gcc的`-S`参数来生成汇编代码，在汇编中也找不到`func`；同时在对应调用`func`的位置出现了call指令。这意味着在不开任何优化选项的情况下编译器实际上没有进行内联。
+
+现在我们换而执行`gcc -c a.c b.c -O2`，然后再查看符号表：
+```
+
+a.o:    file format mach-o 64-bit x86-64
+
+SYMBOL TABLE:
+0000000000000000 g     F __TEXT,__text _main
+0000000000000000         *UND* _call
+0000000000000000         *UND* _printf
+
+b.o:    file format mach-o 64-bit x86-64
+
+SYMBOL TABLE:
+0000000000000000 g     F __TEXT,__text _call
+```
+
+`func`对应的符号直接消失了，可见在O2优化下函数确实被内联。`gcc -o test b.c a.c -O2`也能编译通过。
+
+我们需要牢记，是否内联是由编译器决定的。对于任何使用了`inline`修饰的函数，必须保障它可以在实际未发生内联的情况下也能正常编译。为什么GCC不为内联函数生成符号定义呢？维基百科[^1]写道
+
+> In C99, a function defined inline will never, and a function defined extern inline will always, emit an externally visible function. Unlike in C++, there is no way to ask for an externally visible function shared among translation units to be emitted only if required.
+
+在C语言中，和C++一样，`inline`不会改变函数的链接性。同时具有外部链接性的定义没有被生成，于是造成了上面的结果。我们可以加上`static`关键词将函数改为内部链接，把	`func`的定义改成`static inline`后，代码可以顺利编译通过（即使不O2优化）。当然，使用静态函数会导致代码出现膨胀（虽然如果内联成功也会如此）。如果我们一定要让函数是外部链接那么该怎么办呢？我们尝试改成`extern inline`，这会得到一个符号冲突的错误。
+```
+duplicate symbol '_func' in:
+    /var/folders/c3/n4bf9s0n3ps_bvx21vh10vp80000gn/T/b-906c56.o
+    /var/folders/c3/n4bf9s0n3ps_bvx21vh10vp80000gn/T/a-ab6837.o
+ld: 1 duplicate symbol for architecture x86_64
+```
+
+看起来C语言的`extern inline`并不和C++的`inline`等同，这是因为更强的ODR限制。cppreference[^2]的相关页面指出：
+
+> If an identifier with external linkage is used in any expression other than a non-VLA, (since C99) sizeof, or _Alignof (since C11), there must be one and only one external definition for that identifier somewhere in the entire program.
+
+因此对于`extern inline`修饰的内联函数，我们要将它和普通的外部链接性函数一样处理：只在一个翻译单元中存在定义。但是，如果我们希望函数真的发生内联，那么该函数定义必须是可见的，如果某个翻译单元中只存在声明不存在定义，那么这个函数一定不能被内联。有趣的是，如果我们把`b.c`中`func`的声明改为`extern inline`而`a.c`中仅保留声明，会得到一个警告：
+```
+a.c:7:19: warning: inline function 'func' is not defined [-Wundefined-inline]
+extern inline int func(int x);
+                  ^
+a.c:10:19: note: used here
+  printf("%d %d", func(1), call());
+                  ^
+1 warning generated.
+```
+
+维基百科[^1]中还写道：
+
+> A function defined inline requires exactly one function with that name somewhere else in the program which is either defined extern inline or without qualifier. If more than one such definition is provided in the whole program, the linker will complain about duplicate symbols. If, however, it is lacking, the linker does not necessarily complain, because, if all uses could be inlined, it is not needed. But it may complain, since the compiler can always ignore the inline qualifier and generate calls to the function instead, as typically happens if the code is compiled without optimization. (This may be the desired behavior, if the function is supposed to be inlined everywhere by all means, and an error should be generated if it is not.) A convenient way is to define the inline functions in header files and create one .c file per function, containing an extern inline declaration for it and including the respective header file with the definition. It does not matter whether the declaration is before or after the include.
+
+这段话的前半部分的内容正是对我们上文的总结：`inline`会导致编译器不生成符号定义，所以需要一个且恰好一个（否则会因为符号冲突而链接失败）`extern inline`修饰或者完全没有修饰的同名函数定义。但是如果没有也可能编译通过，因为如果发生了内联那么就不需要符号了。而后半部分则提出了一种最佳实践（可能不是最佳）：把`inline`修饰的函数定义放在头文件，然后为每个`inline`函数都创建一个`.c`文件，其内容是一个被`extern inline`修饰（或者没有任何修饰词）的函数声明，且包含了对应定义的头文件。
+
+我们来分析按照这样的实践会得到什么。
+* 对于某一个编译单元，它包含了`inline`修饰的函数定义，以及一个对应的声明(`extern inline`修饰或者没有修饰词)。这个声明会让编译器生成该函数的符号定义。
+* 对于其它的编译单元，它仅包含`inline`修饰的函数定义，因此不会生成符号定义。如果函数实际发生内联（因为函数定义可见所以这是可能发生的），那么不需要符号；如果没有发生内联，那么会引用到唯一编译单元中提供的符号定义。
+
+可见这确实是一个聪明的方法：完美地考虑了发生内联和未发生内联的两种情况。但是这样的行为的表象是极其容易让人误解的：当某个翻译单元内的函数被内联时，函数的行为是翻译单元中的那个`inline`定义的行为，和提供外部符号定义的那个函数定义无关！事实上我们可以写出每个翻译单元里都有不同行为的内联函数（它们都是同名的）的代码，但是通过头文件包含避免了这样可怕的事情发生。
+
+在C99之前，C语言标准实际没有定义`inline`关键词。但是GCC为此提供了支持，而在GNU89里，`inline`和`extern inline`的行为恰好和C99是相反的！GNU的文档[^3]介绍了在GNU90/GNU8中内联函数的行为：
+
+> When an inline function is not static, then the compiler must assume that there may be calls from other source files; since a global symbol can be defined only once in any program, the function must not be defined in the other source files, so the calls therein cannot be integrated. Therefore, a non-static inline function is always compiled on its own in the usual fashion.
+> 
+> If you specify both inline and extern in the function definition, then the definition is used only for inlining. In no case is the function compiled on its own, not even if you refer to its address explicitly. Such an address becomes an external reference, as if you had only declared the function, and had not defined it.
+> 
+> This combination of inline and extern has almost the effect of a macro. The way to use it is to put a function definition in a header file with these keywords, and put another copy of the definition (lacking inline and extern) in a library file. The definition in the header file causes most calls to the function to be inlined. If any uses of the function remain, they refer to the single copy in the library.
+
+可见其介绍与给出的最佳实践与我们前文的内容是一致的。
+
+最后简单对本文做一下总结：
+* 在C/C++中，`inline`关键词建议编译器对函数内联，但是否内联仍然由编译器自身决定。
+* 在C/C++中，`inline`关键词不会改变函数的链接性，因此函数仍然是外部链接的。
+* 在C++中，`inline`修饰的函数具有更弱的ODR限制，可以在每个翻译单元中都存在一个定义。理论上这些定义必须是相同的，但实际上编译器不会检查。
+* 在C99中，编译器不会为`inline`修饰的函数定义生成符号定义，而`extern inline`则会。GNU89/90的规定则恰好相反。
+* 如果实际发生了内联行为，那么是不需要符号的。
+* 在同一个翻译单元内如果既存在`inline`修饰的函数定义和`extern inline`修饰或没有修饰词的函数声明，那么编译器会为它生成符号定义。
+* 如果一个翻译单元内不存在定义但存在`extern inline`修饰的声明，那么编译器在编译阶段会产生一个找不到定义的警告，但实际上不影响链接时的符号解析。
+
+***
+
+[^1]:[wikipedia.org/wiki/Inline_function](https://en.wikipedia.org/wiki/Inline_function)
+[^2]:[cppreference.com/w/c/language/extern#One_definition_rule](https://en.cppreference.com/w/c/language/extern#One_definition_rule)
+[^3]:[gcc.gnu.org/onlinedocs/gcc-7.1.0/gcc/Inline.html](https://gcc.gnu.org/onlinedocs/gcc-7.1.0/gcc/Inline.html)
