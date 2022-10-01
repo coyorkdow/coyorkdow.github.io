@@ -39,14 +39,14 @@ class Moveable {
   }
 };
 ```
-A rvalue reference is in form of `T&&` (lvalue reference is `T&`). A rvalue reference can only bind to a rvalue but unable to bind to a lvalue. Consider the case below.
+A rvalue reference is in form of `T&&` (lvalue reference is `T&`). A rvalue reference can only bind to an rvalue but unable to bind to an lvalue. Consider the case below.
 
 ```c++
 void foo(std::string&& v) {
   // ...
 }
 ```
-The invoking such as `foo("1")` and `foo(str + "1")` is valid. but `foo(str)` isn't allowed, because it tries to bind a rvalue reference to `str`, which is a lvalue. Now we have problem. Assume the string `str` will no longer be used after invokes `foo(str)`. apparently `str` can be treated as "dying", we don't want have an extra copy, so we hope it can be cast to a rvalue. So that's why we need `std::move`.
+The invoking such as `foo("1")` and `foo(str + "1")` is valid. but `foo(str)` isn't allowed, because it tries to bind an rvalue reference to `str`, which is an lvalue. Now we have problem. Assume the string `str` will no longer be used after invokes `foo(str)`. apparently `str` can be treated as "dying", we don't want have an extra copy, so we hope it can be cast to an rvalue. So that's why we need `std::move`.
 
 ## 2. Universal Reference
 
@@ -58,7 +58,7 @@ std::string str = "123";
 func(str); // OK
 func(str + "4"); // OK
 ```
-In order to understand these codes, we should first learn about template deduction. When we pass `str` to `func`, complier notices that it is a lvalue, so it deduces the template parameter `T` as a lvalue reference type. The argument `T&& v` then seems become a rvalue reference to a lvalue reference of `std::string`. Wait, we all know there is no a reference to a reference, but here are special rules called "Reference Collapsing". If we use template or type alias to try to create "a reference to a reference", then it will be collapsed to an ordinary lvalue or rvalue reference.
+In order to understand these codes, we should first learn about template deduction. When we pass `str` to `func`, complier notices that it is an lvalue, so it deduces the template parameter `T` as an lvalue reference type. The argument `T&& v` then seems become an rvalue reference to an lvalue reference of `std::string`. Wait, we all know there is no a reference to a reference, but here are special rules called "Reference Collapsing". If we use template or type alias to try to create "a reference to a reference", then it will be collapsed to an ordinary lvalue or rvalue reference.
 
 There are 4 rules of reference collapsing, which listed below. We let `TR` denote the reference type to `T`, meanwhile `T` is the reference type to `A`. The collapsing will result a reference type to `A`.
 
@@ -69,7 +69,7 @@ There are 4 rules of reference collapsing, which listed below. We let `TR` denot
 | T&  | A&& | A&     |
 | T&& | A&& | A&&    |
 
-Besides the rvalue reference to rvalue reference, the rest of three are all result to a lvalue reference. Thus, when invoking `func(str)`, `T` is `std::string&` and `T&&` results `std::string&`, so argument `v` is a lvalue reference.
+Besides the rvalue reference to rvalue reference, the rest of three are all result to an lvalue reference. Thus, when invoking `func(str)`, `T` is `std::string&` and `T&&` results `std::string&`, so argument `v` is an lvalue reference.
 
 In such a template, the argument can either be lvalue reference or rvalue reference. We call this technique as "Universal Reference". With this technique, in addition to using const lvalue reference as argument, we find another way to create a call-by-reference function which can accepts both lvalue and rvalue.
 
@@ -108,7 +108,7 @@ typename std::remove_reference<_Tp>::type&& move(_Tp&& __t) noexcept {
   return static_cast<typename std::remove_reference<_Tp>::type&&>(__t);
 }
 ```
-The argument `__t` has type of `_Tp&&`, which `_Tp` is template parameter. This is a universal reference so it can accepts both lvalue and rvalue. We don't need to know the details of `std::remove_reference` at present. Just remember if there is a reference type, then it results a dereference type. So `typename std::remove_reference<_Tp>::type&&` is a rvalue reference.
+The argument `__t` has type of `_Tp&&`, which `_Tp` is template parameter. This is a universal reference so it can accepts both lvalue and rvalue. We don't need to know the details of `std::remove_reference` at present. Just remember if there is a reference type, then it results a dereference type. So `typename std::remove_reference<_Tp>::type&&` is an rvalue reference.
 
 
 FYI. We paste the implementation of `std::remove_reference<_Tp>::type` below. Feel free to explore it if you take any interest.
@@ -132,7 +132,7 @@ struct remove_reference<_Tp&&> {
 
 ## 4. What is std::forward and When Should We Use it
 
-There is a truth that might be counterintuitive is that **a rvalue reference itself is a lvalue**. It's confusing for beginners, let's just see a case below.
+There is a truth that might be counterintuitive is that **an rvalue reference itself is an lvalue**. It's confusing for beginners, let's just see a case below.
 
 ```c++
 void Call(int&& m) { std::cout << "move\n"; };
@@ -143,7 +143,7 @@ Call(r);            // Print "copy"
 Call(std::move(r)); // Print "move"
 ```
 
-`r` is a rvalue reference. If we want to invoke the overload of `Call` whose argument is rvalue reference, just use `std::move`. However, consider a situation of universal references, we can't figure out whether the argument is lvalue reference or rvalue reference. For example.
+`r` is an rvalue reference. If we want to invoke the overload of `Call` whose argument is rvalue reference, just use `std::move`. However, consider a situation of universal references, we can't figure out whether the argument is lvalue reference or rvalue reference. For example.
 
 ```c++
 template<typename T1, typename T2>
@@ -153,8 +153,8 @@ void CallTwo(T1&& arg1, T2&& arg2) {
 }
 
 int v = 123;
-CallTwo(v, 123); // arg1 is a lvalue reference, arg2 is a rvalue reference.
-CallTwo(123, v); // arg1 is a rvalue reference, arg2 is a lvalue reference.
+CallTwo(v, 123); // arg1 is an lvalue reference, arg2 is an rvalue reference.
+CallTwo(123, v); // arg1 is an rvalue reference, arg2 is an lvalue reference.
 ```
 What we want to do is invoking `Call(int&)` for lvalue reference, and invoking `Call(int&&)` for rvalue reference. For the codes above, `CallTwo` can invoke `Call(int&)` only. If we use `std::move` then it will only call `Call(int&&)` instead. Is there any universal way to cast rvalue references to rvalues but keep lvalue references as lvalues? Of course we have `std::forward`!
 
@@ -206,8 +206,8 @@ _Tp&& forward(
   return static_cast<_Tp&&>(__t);
 }
 ```
-There are two overloads for `std::forward`. One for forwarding an lvalue and another for forwarding an rvalue. How the compiler distinguish between these two overloads? In fact the complier can not deduce the type of template parameter `_Tp`. This why we should call `std::forward<T1>(arg1)` instead of `std::forward(arg1)`. The key is that we explicitly specifying the template parameter. With properly specifying the template parameter, it can be ensured that the first overload accepts lvalue (recall that both lvalue reference and rvalue reference are lvalues.) and the second overload accepts rvalue.
+There are two overloads of `std::forward`. One for forwarding an lvalue and another for forwarding an rvalue. How the compiler distinguish between these two overloads? In fact the complier can not deduce the type of template parameter `_Tp`. This why we should call `std::forward<T1>(arg1)` instead of `std::forward(arg1)`. The key is that we explicitly specifying the template parameter. With properly specifying the template parameter, it can be ensured that the first overload accepts lvalue (recall that both lvalue reference and rvalue reference are lvalues.) and the second overload accepts rvalue.
 
- Do you still remember when a universal reference is exactly a lvalue reference, the template parameter is actually a lvalue reference type? Here, if `arg1` has type of `int&` then `T1` is `int&`. Otherwise if `arg1` has type of `int&&` then `T1` is `int`. `typename std::remove_reference<_Tp>::type&` will always result a lvalue reference, meanwhile `_Tp` can either be a lvalue reference type or a non reference type. When the passed parameter is a lvalue reference, `_Tp` is a lvalue reference type which results return type `_Tp&&` is lvalue reference. Alternatively, when the passed parameter is a rvalue reference, `_Tp` is a non reference type which results return type `_Tp&&` is rvalue reference.
+ Do you still remember when a universal reference is exactly an lvalue reference, the template parameter is actually an lvalue reference type? Here, if `arg1` has type of `int&` then `T1` is `int&`. Otherwise if `arg1` has type of `int&&` then `T1` is `int`. `typename std::remove_reference<_Tp>::type&` will always result an lvalue reference, meanwhile `_Tp` can either be an lvalue reference type or a non reference type. When the passed parameter is an lvalue reference, `_Tp` is an lvalue reference type which results return type `_Tp&&` is lvalue reference. Alternatively, when the passed parameter is an rvalue reference, `_Tp` is a non reference type which results return type `_Tp&&` is rvalue reference.
 
-So the invokes in `CallTwo` always match the first overload. Sometimes we need to pass a rvalue to `std::forward`, e.g., using `std::forward` in a macro and the macro arguments is `std::move(...)` or literal. In this case, the matched overload will be the second one. Since the second overload always accepts rvalue, its return type should always be rvalue reference, too. So we have a static_assert here to ensure the `_Tp` is not a lvalue reference type. The invoking such as `std::forward<int&>(123)` should be fail to compile.
+So the invokes in `CallTwo` always match the first overload. Sometimes we need to pass an rvalue to `std::forward`, e.g., using `std::forward` in a macro and the macro arguments is `std::move(...)` or literal. In this case, the matched overload will be the second one. Since the second overload always accepts rvalue, its return type should always be rvalue reference, too. So we have a static_assert here to ensure the `_Tp` is not an lvalue reference type. The invoking such as `std::forward<int&>(123)` should be fail to compile.
