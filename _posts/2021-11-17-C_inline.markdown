@@ -108,7 +108,7 @@ ld: 1 duplicate symbol for architecture x86_64
 
 > If an identifier with external linkage is used in any expression other than a non-VLA, (since C99) sizeof, or _Alignof (since C11), there must be one and only one external definition for that identifier somewhere in the entire program.
 
-因此对于`extern inline`修饰的内联函数，我们要将它和普通的外部链接性函数一样处理：只在一个翻译单元中存在定义。但是，如果我们希望函数真的发生内联，那么该函数定义必须是可见的，如果某个翻译单元中只存在声明不存在定义，那么这个函数一定不能被内联。有趣的是，如果我们把`b.c`中`func`的声明改为`extern inline`而`a.c`中仅保留声明，会得到一个警告：
+因此对于`extern inline`修饰的内联函数，我们要将它和普通的外部链接性函数一样处理：只在一个翻译单元中存在定义。但是，如果我们希望函数真的发生内联，那么该函数定义必须是可见的，如果某个翻译单元中只存在声明不存在定义，那么这个函数一定不能被内联。有趣的是，如果我们把`b.c`中`func`的定义改为`extern inline`而`a.c`中仅保留声明，会得到一个警告：
 ```
 a.c:7:19: warning: inline function 'func' is not defined [-Wundefined-inline]
 extern inline int func(int x);
