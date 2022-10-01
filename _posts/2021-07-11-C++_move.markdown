@@ -53,16 +53,14 @@ The invoking such as `foo("1")` and `foo(str + "1")` is valid. but `foo(str)` is
 Before we introduce `std::move`, let's see a interesting trick.
 
 ```c++
-template <typename T> void func(T&& v) {
-  // ...
-}
-std::string str = "124;
+template <typename T> void func(T&& v) {}
+std::string str = "123";
 func(str); // OK
 func(str + "4"); // OK
 ```
-In order to understand these codes, we should first learn about template deduction. When we pass `str` to `func`, complier notices that it is a lvalue, so it deduces the template parameter `T` as a lvalue reference type. The argument `T&& v` then seems become a rvalue reference to a lvalue reference of `std::string`. Wait, we all know there is no a reference to a reference, but here are special rules called "Reference Collapsing". If we use template or type alias to try to create "a reference to a reference", then it will be collapsed to a ordinary lvalue or rvalue reference.
+In order to understand these codes, we should first learn about template deduction. When we pass `str` to `func`, complier notices that it is a lvalue, so it deduces the template parameter `T` as a lvalue reference type. The argument `T&& v` then seems become a rvalue reference to a lvalue reference of `std::string`. Wait, we all know there is no a reference to a reference, but here are special rules called "Reference Collapsing". If we use template or type alias to try to create "a reference to a reference", then it will be collapsed to an ordinary lvalue or rvalue reference.
 
-There are 4 rules of reference collapsing, which listed below. We denote the `TR` is the reference type to `T`, meanwhile the `T` is the reference type to `A`. The collapsing will result a reference type to `A`.
+There are 4 rules of reference collapsing, which listed below. We let `TR` denote the reference type to `T`, meanwhile `T` is the reference type to `A`. The collapsing will result a reference type to `A`.
 
 | TR  | T   | Result |
 | --- | --- | ------ |
@@ -71,7 +69,7 @@ There are 4 rules of reference collapsing, which listed below. We denote the `TR
 | T&  | A&& | A&     |
 | T&& | A&& | A&&    |
 
-Besides the rvalue reference to rvalue reference, the rest of three will are result to a lvalue reference. Thus, when invoking `func(str)`, `T` is `std::string&` and `T&&` results `std::string&`, so argument `v` is a lvalue reference.
+Besides the rvalue reference to rvalue reference, the rest of three are all result to a lvalue reference. Thus, when invoking `func(str)`, `T` is `std::string&` and `T&&` results `std::string&`, so argument `v` is a lvalue reference.
 
 In such a template, the argument can either be lvalue reference or rvalue reference. We call this technique as "Universal Reference". With this technique, in addition to using const lvalue reference as argument, we find another way to create a call-by-reference function which can accepts both lvalue and rvalue.
 
@@ -79,7 +77,7 @@ For avoiding confusing, we must point out that a universal reference template wi
 
 ## 3. What is std::move and How it Works
 
-Now let's move on to the `std::move`, and see a simple case first. We implemented a func `MyMove`, but it's a bad implementation compares to the `std::move`. Recall the the effect of `std::move` is casting to rvalue.
+Now let's move on to the `std::move`, and see a simple case firstly. We implemented a func `MyMove`, but it's a bad implementation compares to the `std::move`. Recall the the effect of `std::move` is casting to rvalue.
 
 ```c++
 template <typename T>
