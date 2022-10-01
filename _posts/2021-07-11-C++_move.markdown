@@ -1,63 +1,92 @@
 ---
 layout: post
-title: "C++移动语义: 右值引用, 引用折叠, std::move, std::forward"
+title: "The Move Semantics of C++"
 date: 2021-07-11 +0800
 categories: C++ 
 ---
-C++11新增了移动语义，提供移动而非拷贝对象的能力。在很多场景中，发生对象拷贝后原对象就立刻被销毁（比如将对象放入容器），这种情况下，实例化时不进行拷贝而是接管旧对象所占有的资源能大幅度提高性能。为了支持移动语义，C++11新增了一种引用类型: 右值引用(rvalue reference)，它被用于绑定到一个将要销毁的对象上。和拷贝构造函数/拷贝赋值运算类似，现在可以定义移动构造函数/移动赋值运算，实现移动而非拷贝的逻辑。
+
+## 1. What is "Move Semantics"
+
+In C++11 there is a new feature which named "Move Semantics". It offers an ability that we don't actually copy an object instead we move it. When initializing a new object through another, it will be no necessary to make a copy. Instead, the new object can acquire the resources that held by the old one, which may leads a highly improvement of performance. In order to support move semantics, C++11 introduced a new reference type, rvalue reference (rvalue means "right value", it distinguished from the original lvalue reference). rvalue reference is used to bind to an object which we think it's "dying". the value of a "dying" object will not be used in the future. A move constructor of type `T` has the parameter which is `T`'s rvalue reference. That is, we can implement the move constructor to let it "move" but not copy. 
 
 ```c++
-struct Moveable {
-  Moveable() = default;
-  ~Moveable() = default;
-  Moveable(const Moveable& m) { std::cout << "copy\n"; }
-  Moveable(Moveable&& m) { std::cout << "move\n"; }
+class Moveable {
+
+  // This is the resource which held by class Moveable.
+  Resource* r;
+
+ public:
+  Moveable(const Moveable& m) {
+    std::cout << "copy\n";
+    // This is copy constructor. We copy the value from m.r to this->r.
+    this->r = new Resource(m.r);
+  }
+  Moveable(Moveable&& m) {
+    std::cout << "move\n";
+    // This is move constructor. We make this->r acquires the value from m.r, and m.r will become nullptr.
+    this->r = m.r;
+    m.r = nullptr;
+  }
   Moveable& operator=(const Moveable& m) {
     std::cout << "copy\n";
+    // This is copy assigner. Do the similar as the copy constructor.
     return *this;
   }
   Moveable& operator=(Moveable&& m) {
     std::cout << "move\n";
+    // This is move assigner. Do the similar as the move constructor.
     return *this;
   }
 };
 ```
-右值引用使用`&&`而不是常规引用（可称为左值引用）的`&`。右值引用仅能绑定右值而无法绑定到左值上。考虑如下例子：
+A rvalue reference is in form of `T&&` (lvalue reference is `T&`). A rvalue reference can only bind to a rvalue but unable to bind to a lvalue. Consider the case below.
 
 ```c++
-void foo(int&& v) {}
+void foo(std::string&& v) {
+  // ...
+}
 ```
-形如`foo(1)`和`foo(i+1)`这样的调用是合法的，但是`foo(i)`则不被允许，因为它试图将右值引用绑定到左值`i`上。这样的规则为移动语义带来了困扰，因为一个即将被销毁的对象仍然会被视为左值，尽管我们希望将它视为右值处理。幸运的是，借助模板可以实现下面这个简单的魔法：
+The invoking such as `foo("1")` and `foo(str + "1")` is valid. but `foo(str)` isn't allowed, because it tries to bind a rvalue reference to `str`, which is a lvalue. Now we have problem. Assume the string `str` will no longer be used after invokes `foo(str)`. apparently `str` can be treated as "dying", we don't want have an extra copy, so we hope it can be cast to a rvalue. So that's why we need `std::move`.
+
+## 2. Universal Reference
+
+Before we introduce `std::move`, let's see a interesting trick.
 
 ```c++
-template <typename T> void func(T&& v);
-int i = 0;
-func(0); //合法的调用
-func(i); //合法的调用
+template <typename T> void func(T&& v) {
+  // ...
+}
+std::string str = "124;
+func(str); // OK
+func(str + "4"); // OK
 ```
-为了理解上述代码的原理，需要考察模板推断的过程。当我们将一个左值传递给函数的右值引用参数，且此右值引用指向模板类型参数（如`T&&`）时，编译器推断模板类型参数为实参的的左值引用类型。因此在调用`func(i)`时，`T`的类型是`int&`而非`int`。这引入了第二个困境：看起来`func(i)`的参数是一个对int的左值引用的右值引用。在一般情况下引用的引用是不被允许的，但是通过类型别名或者模板推断却能达到。
-如果一个引用的引用被创建，c++11使用引用折叠(reference collapsing)规则将它变为一个普通的左值或者右值引用。折叠引用的规则共有四条，在下标列出，`TR`表示对`T`的引用类型，同时`T`也是一个对`A`的引用类型：
+In order to understand these codes, we should first learn about template deduction. When we pass `str` to `func`, complier notices that it is a lvalue, so it deduces the template parameter `T` as a lvalue reference type. The argument `T&& v` then seems become a rvalue reference to a lvalue reference of `std::string`. Wait, we all know there is no a reference to a reference, but here are special rules called "Reference Collapsing". If we use template or type alias to try to create "a reference to a reference", then it will be collapsed to a ordinary lvalue or rvalue reference.
 
-| TR  | T   | 结果 |
-| --- | --- | ---- |
-| T&  | A&  | A&   |
-| T&& | A&  | A&   |
-| T&  | A&& | A&   |
-| T&& | A&& | A&&  |
+There are 4 rules of reference collapsing, which listed below. We denote the `TR` is the reference type to `T`, meanwhile the `T` is the reference type to `A`. The collapsing will result a reference type to `A`.
 
-可以看到，除了对右值引用的右值引用会折叠为右值引用外，其它三种情况的结果都是左值引用。因此在调用`func(i)`时函数的参数实际上是左值引用。这样的魔法使得指向模板类型参数的右值引用在一些情况下实际上是左值引用，因此这又被称为万能引用(universal reference)。
+| TR  | T   | Result |
+| --- | --- | ------ |
+| T&  | A&  | A&     |
+| T&& | A&  | A&     |
+| T&  | A&& | A&     |
+| T&& | A&& | A&&    |
 
-从一个左值`staitc_cast`到右值是被允许的，可以通过以下的函数辅助移动语义的实现：
+Besides the rvalue reference to rvalue reference, the rest of three will are result to a lvalue reference. Thus, when invoking `func(str)`, `T` is `std::string&` and `T&&` results `std::string&`, so argument `v` is a lvalue reference.
+
+In such a template, the argument can either be lvalue reference or rvalue reference. We call this technique as "Universal Reference". With this technique, in addition to using const lvalue reference as argument, we find another way to create a call-by-reference function which can accepts both lvalue and rvalue.
+
+For avoiding confusing, we must point out that a universal reference template will instantiate two different definitions to accept lvalue and rvalue, respectively. So when we invoke with lvalue and rvalue respectively, we are actually invoking two different functions. This is how C++'s template instantiation doing.
+
+## 3. What is std::move and How it Works
+
+Now let's move on to the `std::move`, and see a simple case first. We implemented a func `MyMove`, but it's a bad implementation compares to the `std::move`. Recall the the effect of `std::move` is casting to rvalue.
 
 ```c++
 template <typename T>
-T&& move(const T& v) {
+T&& MyMove(const T& v) {
   return static_cast<T&&>(const_cast<T&>(v));
 }
-```
-函数的参数是一个常量左值引用，这允许在调用时接受右值。`const_cast`解除`v`的`const`限制，然后通过`static_cast`转换为右值。在大部分情况下这个函数具备和标准库的`std::move`相同的能力，但是二者之间仍然有差异，我们自己实现的`move`函数会丢失`const`属性。下面用一个例子来展示两者间的区别。我们定义函数`Call`，它的重载版本分别接受左值，右值，和常量右值。
 
-```c++
 void Call(Moveable&& m) {
   std::cout << "move\n";
 };
@@ -69,10 +98,11 @@ void Call(Moveable& m) {
 }
 
 const Moveable m;
-Call(move(m));      //输出move
-Call(std::move(m)); //输出const move
+Call(MyMove(m));      // Print "move".
+Call(std::move(m)); // Print "const move"
 ```
-现在我们来看标准库`std::move`的实现：
+
+We've noticed that `MyMove` will lose the const qualified. Now let's see one of the implementations of `std::move` in standard library.
 
 ```c++
 template <typename _Tp>
@@ -80,9 +110,10 @@ typename std::remove_reference<_Tp>::type&& move(_Tp&& __t) noexcept {
   return static_cast<typename std::remove_reference<_Tp>::type&&>(__t);
 }
 ```
-`std::move`接受右值引用参数，且该参数指向模板类型参数，因此会触发万能引用，在调用时可以接受左值（包括常量左值）。`std::remove_reference`可以推断出被引用的类型，去除`_Tp`可能的引用属性，从而避免引用折叠。`typename std::remove_reference<_Tp>::type&&`的类型是被引用的类型的右值，它能保留实参的`const`属性。
+The argument `__t` has type of `_Tp&&`, which `_Tp` is template parameter. This is a universal reference so it can accepts both lvalue and rvalue. We don't need to know the details of `std::remove_reference` at present. Just remember if there is a reference type, then it results a dereference type. So `typename std::remove_reference<_Tp>::type&&` is a rvalue reference.
 
-`std::remove_reference<_Tp>::type`的实现很简单，如下所示：
+
+FYI. We paste the implementation of `std::remove_reference<_Tp>::type` below. Feel free to explore it if you take any interest.
 
 ```c++
 template <typename _Tp>
@@ -101,39 +132,53 @@ struct remove_reference<_Tp&&> {
 };
 ```
 
-### 转发
+## 4. What is std::forward and When Should We Use it
 
-一个和直觉违背但是符合逻辑的事实是：一个右值引用本身是一个左值。我们通过和之前类似的`Call`函数体现这点：
+There is a truth that might be counterintuitive is that **a rvalue reference itself is a lvalue**. It's confusing for beginners, let's just see a case below.
 
 ```c++
 void Call(int&& m) { std::cout << "move\n"; };
 void Call(int& m) { std::cout << "copy\n"; }
 
 int&& r = 0;
-Call(r);            //输出copy
-Call(std::move(r)); //输出move
+Call(r);            // Print "copy"
+Call(std::move(r)); // Print "move"
 ```
-这会造成一些问题：一个右值的调用栈可能有多层，在每一层调用中我们都希望保持它不丢失右值的性质。在每次调用时都用`std::move`包装能保证这一点，但是`std::move`会将一个非右值转化成右值。当存在万能引用时（如果我们使用了模板，几乎不可能避免这样的情况发生），我们并不能确定函数的形参究竟是左值还是右值。这时候需要一种方式使得传递参数时保持原始实参的类型，于是`std::forward`就派上了用场。
+
+`r` is a rvalue reference. If we want to invoke the overload of `Call` whose argument is rvalue reference, just use `std::move`. However, consider a situation of universal references, we can't figure out whether the argument is lvalue reference or rvalue reference. For example.
 
 ```c++
-template <typename T>
-void Call(T&& m) {
-  std::cout << "move\n";
-};
-template <typename T>
-void Call(T& m) {
-  std::cout << "copy\n";
-}
-template <typename T>
-void CallWrap(T&& v) {
-  return Call(std::forward<T>(v));
+template<typename T1, typename T2>
+void CallTwo(T1&& arg1, T2&& arg2) {
+  Call(arg1);
+  Call(arg2);
 }
 
-int i = 0;
-CallWrap(0); //输出move
-CallWrap(i); //输出copy
+int v = 123;
+CallTwo(v, 123); // arg1 is a lvalue reference, arg2 is a rvalue reference.
+CallTwo(123, v); // arg1 is a rvalue reference, arg2 is a lvalue reference.
 ```
-现在我们来看标准库`std::forward`的实现：
+What we want to do is invoking `Call(int&)` for lvalue reference, and invoking `Call(int&&)` for rvalue reference. For the codes above, `CallTwo` can invoke `Call(int&)` only. If we use `std::move` then it will only call `Call(int&&)` instead. Is there any universal way to cast rvalue references to rvalues but keep lvalue references as lvalues? Of course we have `std::forward`!
+
+Let's use `std::forward` to update above codes.
+
+
+```c++
+void Call(int&& m) { std::cout << "move\n"; };
+void Call(int& m) { std::cout << "copy\n"; }
+
+template<typename T1, typename T2>
+void CallTwo(T1&& arg1, T2&& arg2) {
+  Call(std::forward<T1>(arg1));
+  Call(std::forward<T2>(arg2));
+}
+
+int v = 123;
+CallTwo(v, 123); // Print "copy\nmove\n"
+CallTwo(123, v); // Print "move\ncopy\n"
+```
+
+Now let's continue to explore the details of `std::forward`.
 
 ```c++
 /**
@@ -163,8 +208,8 @@ _Tp&& forward(
   return static_cast<_Tp&&>(__t);
 }
 ```
-根据注释可以看到，重载的第一个版本用于转发左值，第二个版本用于转发右值。因为函数参数是`typename std::remove_reference<_Tp>::type&&`，所以在这里编译器无法推断`_Tp`的类型，需要显式声明。可以发现这两个重载的版本除了参数不同外其它一模一样（先忽略`static_assert`），仅仅是通过模板推断来得到其引用类型。我们结合`CallWrap`分别对两个重载版本进行分析。
+There are two overloads for `std::forward`. One for forwarding an lvalue and another for forwarding an rvalue. How the compiler distinguish between these two overloads? In fact the complier can not deduce the type of template parameter `_Tp`. This why we should call `std::forward<T1>(arg1)` instead of `std::forward(arg1)`. The key is that we explicitly specifying the template parameter. With properly specifying the template parameter, it can be ensured that the first overload accepts lvalue (recall that both lvalue reference and rvalue reference are lvalues.) and the second overload accepts rvalue.
 
-当调用`CallWrap(i)`时，模板类型参数`T`是`int&`；根据引用折叠，参数`v`的类型是`int&`，匹配到转发左值的重载版本。返回值是`static_cast<_Tp&&>(__t)`，其中`_Tp`是`int&`，根据引用折叠，返回左值引用。
+ Do you still remember when a universal reference is exactly a lvalue reference, the template parameter is actually a lvalue reference type? Here, if `arg1` has type of `int&` then `T1` is `int&`. Otherwise if `arg1` has type of `int&&` then `T1` is `int`. `typename std::remove_reference<_Tp>::type&` will always result a lvalue reference, meanwhile `_Tp` can either be a lvalue reference type or a non reference type. When the passed parameter is a lvalue reference, `_Tp` is a lvalue reference type which results return type `_Tp&&` is lvalue reference. Alternatively, when the passed parameter is a rvalue reference, `_Tp` is a non reference type which results return type `_Tp&&` is rvalue reference.
 
-当调用`CallWrap(0)`时，参数`v`的类型是`int&&`，而模板类型参数`T`是`int`，匹配到转发右值的重载版本。返回值是`static_cast<_Tp&&>(__t)`，其中`_Tp`是`int`，返回右值引用。因为`_Tp`不是一个左值引用，所以能通过`static_assert`。那么什么情况下`static_assert`会失败呢？举个例子: `std::forward<int&>(5);`。
+So the invokes in `CallTwo` always match the first overload. Sometimes we need to pass a rvalue to `std::forward`, e.g., using `std::forward` in a macro and the macro arguments is `std::move(...)` or literal. In this case, the matched overload will be the second one. Since the second overload always accepts rvalue, its return type should always be rvalue reference, too. So we have a static_assert here to ensure the `_Tp` is not a lvalue reference type. The invoking such as `std::forward<int&>(123)` should be fail to compile.
