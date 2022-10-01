@@ -19,9 +19,8 @@
 # in the templates via {{ site.myvariable }}.
 
 title: youtao's blog
-author:
-  name: Youtao Guo
-  email: coyorkdow@outlook.com
+author: Youtao Guo
+email: coyorkdow@outlook.com
 description: >- # this means to ignore newlines until "baseurl:"
   There's a Million Things I Haven't Done, But Just You Wait. Just You Wait!
 # baseurl: "" # the subpath of your site, e.g. /blog
@@ -32,13 +31,14 @@ minima:
   social_links:
     github: coyorkdow
     linkedin: youtaoguo
+    stackoverflow: "11139119"
 
 # Build settings
 theme: minima
 # remote_theme: coyorkdow/minima
 plugins:
   - jekyll-feed
-  - jekyll-seo-tag
+  # - jekyll-seo-tag
   # - jekyll-remote-theme
 # Exclude from processing.
 # The following items will not be processed, by default.
