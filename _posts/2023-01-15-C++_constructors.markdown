@@ -11,7 +11,7 @@ This note is about the "rule of five", about the compiler behaviors on copy & mo
 
 - There are two different conceptions, **implicitly-declared** and **default**. They are different. Each copy/move constructor/assignment operator has an implicitly-declared edition and a default edition.
 
-```C++
+```c++
 class Test {
  public:
   Test() = default;
@@ -40,7 +40,7 @@ If we want use the default edition we should declare it as `default`.
 
 - A default constructor or assignment operator might still be available when its implicitly-declared edition is unavailable.
 
-```C++
+```c++
 class Test {
  public:
   Test() = default;
@@ -71,7 +71,7 @@ class Test {
 
 It should be aware that in these cases, the complier doesn't declare it as `delete`, but doesn't generate the implicitly-declared at all. Which is different from the copy. And it is useful. For example.
 
-```C++
+```c++
 class Test {
  public:
   Test() = default;
@@ -94,7 +94,7 @@ Since `Test` has user-declared destructor, there is no implicitly-declared move 
 
 - A deleted default move constructor or a deleted move assignment operator is ignored by overload resolution. Therefore, when the move constructor or the move assignment operator is unavailable (there's no user-defined and there's no implicitly declared either. or user defines it as `default` while the default edition is deleted.), as long as the copy constructor or the assignment operator is available, trying invoke the move constructor or the move assignment operator will match the copy constructor or the copy move assignment operator, unless the move constructor or the move assignment operator is explicitly deleted.
 
-```C++
+```c++
 class Unmovable {
  public:
   Unmovable() = default;
