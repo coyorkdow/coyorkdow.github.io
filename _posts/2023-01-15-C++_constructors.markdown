@@ -91,6 +91,7 @@ Since `Test` has user-declared destructor, there is no implicitly-declared move 
   <br /> For the class `T`
   1. If `T` has non-static data members that cannot be moved, or if `T` has direct or virtual base class that cannot be move assigned. A const data member is non move-assignable.
   2. If `T` has non-static data member of reference type.
+  3. The scenario about the union or variant type.
 
 - **#10** A deleted default move constructor or a deleted move assignment operator is ignored by overload resolution. Therefore, when the move constructor or the move assignment operator is unavailable (there's no user-defined and there's no implicitly declared either. or user defines it as `default` while the default edition is deleted.), as long as the copy constructor or the assignment operator is available, trying invoke the move constructor or the move assignment operator will match the copy constructor or the copy move assignment operator, unless the move constructor or the move assignment operator is explicitly deleted.
 
