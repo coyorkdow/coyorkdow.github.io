@@ -15,7 +15,7 @@ Assume we have a c++ source file `foo.cc`. And we are going to build a library `
 ```bash
 g++ -fPIC -c foo.cc -o foo.o
 ```
-In the next step, we need to link the object file to a static library and a dynamic library. We use two commands to create them respectively.
+In the next step, we will create a static library and a shared library with `foo.o`. We use two commands to create them respectively.
 ```bash
 ar rcs libfoo.a foo.o # static
 g++ -shared -o libfoo.so foo.o # shared
