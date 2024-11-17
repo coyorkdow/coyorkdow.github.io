@@ -5,7 +5,7 @@ date: 2024-11-17 +0800
 categories: Linking
 ---
 
-I bought my first CSAPP in my freshman year at university. I barely read it, until two years later when I lost it and had to buy a new one. I still remember that the one of the most tough chapters to me is "Linking". After graduating, the most challenging problem I've ever met in my c++ programming life is build system (e.g., CMake). And almost everything about build system is about linking. Here are some experiences I've boiled down in my daily work that I would like to share with everyone.
+I bought my first CSAPP in my freshman year at university. I barely read it, until two years later when I lost it and had to buy a new one. I still remember that the one of the most tough chapters to me is "Linking". After graduating, the most challenging problem I've ever met in my c++ programming life is build system (e.g., CMake). And almost everything about build system is about linking. In this article I would like to share some experience that I've boiled down in my daily work. I would like to talk about both static library and shared library, the dependency between different libraries, and some interesting things that can only be done through the dynamic linking.
 
 All the following content is based on Linux. I use CMake as the build system, and sometimes I will use compile/link command directly. 
 
