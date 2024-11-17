@@ -1,6 +1,6 @@
 ---
 layout: post
-title: "What We Need To Know About Linking C/C++ On Linux"
+title: "Some Of My Experience About Linking C/C++ On Linux"
 date: 2024-11-17 +0800
 categories: Linking
 ---
