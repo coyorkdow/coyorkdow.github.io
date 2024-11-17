@@ -181,7 +181,7 @@ $ ./main
 ./main: error while loading shared libraries: libfoo.so: cannot open shared object file: No such file or directory
 $ LD_LIBRARY_PATH=. ./main # if we want to specify multiple paths, separate them by `:`
 ```
-So far, we have statically linked `foo` and `bar` against `base`. The symbols in `libbase.a` are merged into `libfoo.so` and `libbar.so` (only the symbols we actually need). Therefore, these two shared libraries contain the same name symbols that come from `libbase.a`. However, by default, all the symbols reference by the shared libraries will participate the global relocation which performed by dynamic linking in runtime. The symbol searched by dynamic linker will be used globally. Like I said before, such behavior is quiet similar as the order of static linking. Since `libfoo.so` precedes `libbar.so` in the default loading order, out program will use the symbols of `base` that provided by `libfoo.so`.
+So far, we have statically linked `foo` and `bar` against `base`. The symbols in `libbase.a` are merged into `libfoo.so` and `libbar.so` (only the symbols we actually need). Therefore, these two shared libraries contain the same name symbols that come from `libbase.a`. However, by default, all the symbols reference by the shared libraries will participate the global relocation which performed by dynamic linking in runtime. The symbol firstly found by dynamic linker will be used globally. Like I said before, such behavior is quiet similar as static linking. Since `libfoo.so` precedes `libbar.so` in the default loading order, out program will use the symbols of `base` that provided by `libfoo.so`.
 
 It reveals by using the shared libraries, we can hook functions or variables without recompiling the program. It is commonly used when we want to hook some system calls or replace the default malloc implementation. On linux, [malloc(3)](https://man7.org/linux/man-pages/man3/malloc.3.html) is provided by `libc` by default, and our program is linked against it dynamically. Therefore, we can use `LD_PRELOAD`  to load other malloc library (such as tcmalloc or jemalloc) before loading `libc`.
 
@@ -315,7 +315,7 @@ collect2: error: ld returned 1 exit status
 ```
 
 
-At the end, I will give a full example of how to use these techniques in CMake.
+At the end, I would like to give a full example of how to use these techniques in CMake.
 ```CMake
 cmake_minimum_required(VERSION 3.13)
 project(my_demo)
