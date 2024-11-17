@@ -27,7 +27,7 @@ collect2: error: ld returned 1 exit status
 
 Feel confusing? If we add a argument `-O2`, using `gcc -O2 test.c` we can compile `test.c` (At least I can). What happened just now?
 
-Well, `inline` is not a rarely used keyword. And it can be assumed that most of the C/C++ programmers know that `inline` **suggests** the compiler to inline the specific function, but whether this function is actually inlined or not are totally depending on compiler. Once a function be inlined, the commands expand at where it is invoked, so the processor execute theses commands directly instead of manipulating the call stack.
+Well, `inline` is not a rarely used keyword. And it can be assumed that most of the C/C++ programmers know that `inline` **suggests** the compiler to inline the specific function, but whether this function is actually inlined or not are totally depending on compiler. Once a function is inlined, the commands expand at where it is invoked, so the processor execute theses commands directly instead of manipulating the call stack.
 
 However, there is another use for `inline`, that is, to alter the function's linking (but it doesn't change the linkage). Since `inline` can only suggests but can not force the compiler to inline a function. Altering linking is actually more important.
 
@@ -193,7 +193,7 @@ Before C99, there is no definition about `inline` in C standard. GNU89 gives the
 * In C++, `inline` allows us to define a function exactly once in each translation unit instead of defining exactly once in entire program.
 * In C99, define with `inline` will never, and with `extern inline` will always, emit a symbol definition. Which is opposite to GNU89.
 * There is no need a symbol if a function is actually inlined.
-* Define `inline` specified function in header, but create a declaration in one .c file which includes the respective header. So that the linker can find the symbol definition once some invokes are not actually inlined.
+* Define `inline` specified function in header, but create a declaration in one .c file which includes the respective header. So that the linker can find the symbol definition in case some invokes are not actually inlined.
 
 ***
 

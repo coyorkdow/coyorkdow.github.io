@@ -2,7 +2,7 @@
 layout: post
 title: "Derive Y Combinator from an Object Oriented Perspective"
 date: 2023-06-17 +0800
-categories: Functional Programming
+categories: Functional_Programming
 ---
 
 Recently I am studying the metaprogramming of Python. There are some very important concepts: decorator, metaclass, etc. As a C++ lover, I can't stop me to associate everything with C++ even when exploring the features of other programming languages. Last week I considered if I can simulate the Python style decorator in C++. In Python we can modify or enhance a function's capability simply by adding an `@` above its definition. For example, we can make a naive recursive searching caches its results to avoid repeated evaluation.
