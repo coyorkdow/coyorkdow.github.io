@@ -25,9 +25,9 @@ The command we use to crate a static library is `ar` instead of `g++`. In fact, 
 
 Now we can create an executable which links against the library we created before. It might be a `main.cc` that contains an invocation to a function which defined in `libfoo`.
 ```bash
-g++ -fPIC -c foo.cc -o foo.o
+g++ -o main main.cc libfoo.a
 ```
-So far it's very simple. I specify the static linking here because I want to introduce dynamic linking later. And we need to be aware of that we combined compile and link into one single command, but actually there is a intermediate step which creates `main.o` for `main.cc`. In the `main.o` there is a reference to the `foo`'s symbol, but this symbol is not defined in `main.o`.
+So far it's very simple. I specified the static linking here because I want to introduce dynamic linking later. And we need to be aware of that we combined compile and link into one single command, but actually there is a intermediate step which creates `main.o` for `main.cc`. In the `main.o` there is a reference to the `foo`'s symbol, but this symbol is not defined in `main.o`.
 
 # One definition rule
 
